@@ -1,0 +1,1 @@
+/opt/cuda/bin/gcc -g -rdynamic CMakeFiles/naval_battle.dir/server.c.o -o naval_battle 

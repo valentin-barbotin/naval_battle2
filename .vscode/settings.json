@@ -1,0 +1,21 @@
+{
+    "files.associations": {
+        "*.ejs": "html",
+        "*.a": "nasm",
+        "stdio.h": "c",
+        "*.tcc": "c",
+        "fstream": "c",
+        "locale": "c",
+        "socket.h": "c",
+        "inet.h": "c",
+        "fcntl.h": "c",
+        "ostream": "c",
+        "array": "c",
+        "string": "c",
+        "string_view": "c",
+        "vector": "c",
+        "random": "cpp",
+        "__locale": "c",
+        "__string": "c"
+    }
+}
