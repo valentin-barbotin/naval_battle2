@@ -17,25 +17,42 @@
 #define HOST "127.0.0.1"
 
 #define SHM_KEY 4567
-#define SHM_SIZE 4096
+#define SHM_SIZE 16384
 #define SHM_PERM (S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP|S_IROTH|S_IWOTH)
+
+typedef char string[255];
+
+typedef struct User {
+    string name;
+    string password;
+} User;
+
+typedef struct Users {
+    User users[10];
+    unsigned int nbUsers;
+} Users;
+
+typedef struct Game {
+    Users users;
+} Game;
 
 bool isClientAdmin() {
     return true;
 }
 
-void handleClient(int clientSocket, int client, unsigned int fd, char *shm) {
+void handleClient(int clientSocket, int client, unsigned int fd, Game *game) {
     char data[500] = {0};
     unsigned int length = 0;
     ssize_t resSize = 0;
-    char* helpCommands = "Here is the list of commands:\n"
-    "- add: add a new user (admin)\n"
+    char* helpCommands2 = "Here is the list of commands:\n"
+    "- addUser: <name> <password> (admin)\n"
     "- remove: remove a user (admin)\n"
     "- login: <user>\n"
     "- list: list all users\n"
     "- create: create a new game (admin)\n"
     "- quit: quit the server (admin)\n"
     "- help: list all commands\n";
+    char *helpCommands = "Here is the list of commands:";
 
     uint32_t dataLen = strlen(helpCommands);
     uint32_t hostToNetInt = htonl(dataLen);
@@ -44,51 +61,103 @@ void handleClient(int clientSocket, int client, unsigned int fd, char *shm) {
     char *pos;
     do
     {
-        // write(fd, "wait user input\n", strlen("wait user input\n"));
+        memset(data, 0, 500);
         if (resSize = recv(clientSocket, data, 500, 0), resSize == -1) {
             perror("bye");
             exit(1);
         };
         puts(data);
-        // write(fd, "check action\n", strlen("check action\n"));
         if (strcmp(data, "exit") == 0) {
             puts("fin du programme");
             exit(0);
         } else if ((pos = strstr(data, "login")), pos != NULL) {
         //     // check if the user is already logged
-            char *user = strstr(pos, " ");
-            if (user == NULL) {
-                exit(1);
+            User user;
+            unsigned int n = 0;
+            const char *separators = " ";
+            char *elem = strtok(pos, separators);
+            while (elem != NULL)
+            {
+                printf("%d %s\n", n, elem);
+                if (n == 1) {
+                    strcpy(user.name, elem);
+                    printf("copy name %s\n", user.name);
+                } else if (n == 2) {
+                    strcpy(user.password, elem);
+                    printf("copy pwd %s\n", user.password);
+                }
+                n++;
+                elem = strtok(NULL, separators);
             }
-            user++;
+
+
             char *connectionFailed = "Connection failed\n";
             char *connectionSuccess = "Connection success\n";
-            puts("the user is: ");
-            puts(user);
-            if (strcmp(user, "Admin") == 0) {
-                dataLen = strlen(connectionSuccess);
-                hostToNetInt = htonl(dataLen);
-                send(clientSocket, &hostToNetInt, sizeof(hostToNetInt), 0);
-                send(clientSocket, connectionSuccess, dataLen, 0);
-            } else {
+            bool found = false;
+            printf("nb users = %d\n", game->users.nbUsers);
+            for (int i = 0; i < game->users.nbUsers; i++)
+            {
+                User *user2 = &game->users.users[i];
+                puts(user2->name);
+                if ((strcmp(user2->name, user.name) == 0) && (strcmp(user2->password, user.password) == 0)) {
+                    dataLen = strlen(connectionSuccess);
+                    hostToNetInt = htonl(dataLen);
+                    send(clientSocket, &hostToNetInt, sizeof(hostToNetInt), 0);
+                    send(clientSocket, connectionSuccess, dataLen, 0);
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
                 dataLen = strlen(connectionFailed);
                 hostToNetInt = htonl(dataLen);
                 send(clientSocket, &hostToNetInt, sizeof(hostToNetInt), 0);
-                send(clientSocket, connectionFailed, dataLen, 0);
+                send(clientSocket, connectionFailed, dataLen, 0);;
             }
-
-            char osef[500] = {0};
-            if (*shm == '\0') {
-                strcpy(osef, "No user..\n");
-            } else {
-                sprintf(osef, "The previous user was %s\n", user);
-            }
-            write(fd, osef, strlen(osef));
-            strcpy(shm, user);
             continue;
         } else if (strcmp(data, "startgame") == 0) {
             // check if user is admin with id using Shared Memory
             // new 
+        } else if ((pos = strstr(data, "addUser")), pos != NULL) {
+            User user;
+            unsigned int n = 0;
+            const char *separators = " ";
+            char *elem = strtok(pos, separators);
+            while (elem != NULL)
+            {
+                printf("%d %s\n", n, elem);
+                if (n == 1) {
+                    strcpy(user.name, elem);
+                    printf("copy name %s\n", user.name);
+                } else if (n == 2) {
+                    strcpy(user.password, elem);
+                    printf("copy pwd %s\n", user.password);
+                }
+                n++;
+                elem = strtok(NULL, separators);
+            }
+            printf("name = %s password = %s n = %d", user.name, user.password, n);
+            strcpy(game->users.users[game->users.nbUsers].name, user.name);
+            strcpy(game->users.users[game->users.nbUsers].password, user.password);
+            game->users.nbUsers++;
+        } else if (strcmp(data, "list") == 0) {
+            User *user;
+            size_t playerListSize = game->users.nbUsers * 255;
+            char playerList[playerListSize];
+            memset(playerList, '\0', playerListSize);
+            for (int i = 0; i < game->users.nbUsers; i++)
+            {
+                user = &game->users.users[i];
+                strcat(playerList, user->name);
+                strcat(playerList, "\n");
+            }
+            dataLen = strlen(playerList);
+            hostToNetInt = htonl(dataLen);
+            send(clientSocket, &hostToNetInt, sizeof(hostToNetInt), 0);
+            send(clientSocket, playerList, dataLen, 0);
+            // write(fd, playerList, strlen(playerList));
+            
+            continue;
         } else if (strcmp(data, "help") == 0) {
             dataLen = strlen(helpCommands);
             hostToNetInt = htonl(dataLen);
@@ -104,8 +173,8 @@ void handleClient(int clientSocket, int client, unsigned int fd, char *shm) {
     } while (1);
 }
 
-void* createSHM() {
-    return mmap(NULL, SHM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+Game* createSHM() {
+    return mmap(NULL, sizeof(Game), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
 }
 
 int main(int argc, int *argv[]) {
@@ -125,9 +194,15 @@ int main(int argc, int *argv[]) {
     if (shm == MAP_FAILED) {
         perror("Can't create shared memory");
         exit(1);
-    }
-    memcpy(shm, "", 1);
-    // strcpy(shm, "Admin");
+    };
+    User adminUser = {
+        .name = "Admin",
+        .password = "ratio"
+    };
+
+    Game *game = (Game*)shm;
+    game->users.users[0] = adminUser;
+    game->users.nbUsers = 1;
 
     struct sockaddr_in srv, client;
     // AF_INET => ipv4
@@ -152,8 +227,8 @@ int main(int argc, int *argv[]) {
     write(fd, serverStartedMsg, strlen(serverStartedMsg));
     
     int clientId = 0;
-    do
-    {
+    // do
+    // {
         int sz = sizeof(struct sockaddr_in);
         int clientSocket = accept(sd, (struct sockaddr *) &client, (socklen_t*) &sz);
         if (clientSocket == -1) {
@@ -162,13 +237,13 @@ int main(int argc, int *argv[]) {
         }
         clientId++;
     
-        int forked = fork();
-        if (forked == 0) { //handle single client
+        // int forked = fork();
+        // if (forked == 0) { //handle single client
             printf("[Child] New client with id %d\n", clientId);
             handleClient(clientSocket, clientId, fd, shm);
             return EXIT_SUCCESS;
-        }
-        printf("[Main] New client with id %d\n", clientId);
-    } while (1);
+        // }
+        // printf("[Main] New client with id %d\n", clientId);
+    // } while (1);
     
 }

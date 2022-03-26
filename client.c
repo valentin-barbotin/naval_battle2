@@ -37,15 +37,19 @@ int main(int argc, int *argv[]) {
             perror("bye");
             exit(1);
         };
+        printf("resSize: %d\n", resSize);
         sizeToReceive = ntohl(sizeToReceive);
         printf("sizeToReceive: %u\n", sizeToReceive);
         // 
         if (sizeToReceive > 0) {
             puts("Must receive data, waiting..");
+            memset(data, 0, 0);
             if (resSize = recv(sd, data, sizeToReceive, 0), resSize == -1) {
                 perror("bye");
                 exit(1);
             };
+            data[sizeToReceive] = '\0';
+            printf("resSize: %d\n", resSize);
             puts(data);
         }
 
