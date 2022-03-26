@@ -1,1 +1,0 @@
-/opt/cuda/bin/gcc -g -rdynamic CMakeFiles/naval_battle_client.dir/client.c.o -o naval_battle_client 
