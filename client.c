@@ -13,6 +13,31 @@
 #define PORT 9871
 #define HOST "127.0.0.1"
 
+typedef char string[255];
+
+unsigned int **grid;
+char *alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+void receivePrompt(string message, int sd) {
+    ssize_t resSize = 0;
+    uint32_t sizeToReceive = 0;
+    if (resSize = recv(sd, &sizeToReceive, sizeof(uint32_t), 0), resSize == -1) {
+        perror("bye");
+        exit(1);
+    };
+    sizeToReceive = ntohl(sizeToReceive);
+
+    if (sizeToReceive > 0) {
+        memset(message, 0, 255);
+        if (resSize = recv(sd, message, sizeToReceive, 0), resSize == -1) {
+            perror("bye");
+            exit(1);
+        };
+        message[sizeToReceive] = '\0';
+        puts(message);
+    }
+}
+
 int main(int argc, int *argv[]) {
     struct sockaddr_in cl;
     int sd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
@@ -30,6 +55,7 @@ int main(int argc, int *argv[]) {
     ssize_t resSize = 0;
     uint32_t sizeToReceive = 0;
 
+    string msg = "";
     do
     {
         puts("Wait server response..");
@@ -53,11 +79,13 @@ int main(int argc, int *argv[]) {
             puts(data);
         }
 
+        receivePrompt(msg, sd);
+
         //check if there something to print
-        puts("Enter a command:");
         fgets(data, 500, stdin);
         data[strcspn(data, "\n")] = 0;
         send(sd, data, 500, 0);
+        puts("Message sended");
         // handle errors
     } while (1);
 }
