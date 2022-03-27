@@ -59,7 +59,7 @@ enum {
     MSG_COL,
     MSG_MIN_PLAYER,
     MSG_PLACE_BOAT,
-    MSG_BOAT_LENGTH,
+    MSG_PLAY,
 };
 
 unsigned int **grid;
@@ -143,11 +143,11 @@ void handleClient(int clientSocket, int client, unsigned int fd, Game *game) {
                     strcat(promptClient, "\n");
                 }
 
-                sprintf(promptClient, "%s\nChoisir une position (ex B1)", promptClient);
+                sprintf(promptClient, "%s\nChoisir une position (ex B1) (OK pour terminer)", promptClient);
                 puts(promptClient);                                
                 break;
-            case MSG_BOAT_LENGTH:
-                strcpy(promptClient, "Session name:");
+            case MSG_PLAY:
+                strcpy(promptClient, "Choisir une position (ex B1)");
                 break;
             
             default:
@@ -187,6 +187,10 @@ void handleClient(int clientSocket, int client, unsigned int fd, Game *game) {
                     gameMode = MSG_PLACE_BOAT;
                     break;
                 case MSG_PLACE_BOAT:
+                    if (strcmp(data, "OK") == 0) {
+                        // gameMode = MSG_BASE; TODO
+                        break;
+                    }
                     int number = 0;
                     char letter = 0;
                     sscanf(data, "%c%d", &letter, &number);
@@ -194,7 +198,7 @@ void handleClient(int clientSocket, int client, unsigned int fd, Game *game) {
                         puts("Invalid position");
                         break;
                     }
-                    printf("%d%c\n", number - 1, letter - 'A');
+
                     grid[number - 1][letter - 'A'] = GRID_BOAT;
                     puts(data);
                     break;
@@ -258,7 +262,25 @@ void handleClient(int clientSocket, int client, unsigned int fd, Game *game) {
         } else if (strcmp(data, "startgame") == 0) {
             gameMode = MSG_NAME;
             // check if user is admin with id using Shared Memory
-            // promptClient2 = "Enter a game name:";
+        } else if ((pos = strstr(data, "remove")), pos != NULL) {
+            // check if user is admin with id using Shared Memory
+            pos = strchr(pos, ' ');
+            if (pos == NULL) {
+                puts("Invalid command");
+                break;
+            }
+            pos++;
+            printf("The user to remove is %s\n", pos);
+            for (int i = 0; i < game->users.nbUsers; i++)
+            {
+                User *user = &game->users.users[i];
+                if (strcmp(user->name, pos) == 0) {
+                    game->users.nbUsers--;
+                    strcpy(user->name, "");
+                    strcpy(user->password, "");
+                    break;
+                }
+            }
         } else if ((pos = strstr(data, "addUser")), pos != NULL) {
             User user;
             unsigned int n = 0;
