@@ -131,7 +131,7 @@ void getGrid() {
                     // }
                     break;
                 case GRID_HIT:
-                    c = 'T';
+                    c = 'C'; //coulé avec un hit (bateau de 1 case)
                     break;
                 
                 default:
