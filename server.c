@@ -126,9 +126,9 @@ void getGrid() {
             switch (game->session.grid[j][i])
             {
                 case GRID_BOAT:
-                    // if (isClientAdmin()) {
+                    if (isClientAdmin()) {
                         c = 'B';
-                    // }
+                    }
                     break;
                 case GRID_HIT:
                     c = 'C'; //coulé avec un hit (bateau de 1 case)
