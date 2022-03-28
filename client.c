@@ -58,7 +58,7 @@ int main(int argc, int *argv[]) {
     string msg = "";
     do
     {
-        puts("Wait server response..");
+        // puts("Wait server response..");
         if (resSize = recv(sd, &sizeToReceive, sizeof(uint32_t), 0), resSize == -1) {
             perror("bye");
             exit(1);

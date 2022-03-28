@@ -38,6 +38,7 @@ typedef struct Users {
 typedef struct Session {
     Users users;
     string name;
+    unsigned int grid[50][50];
     unsigned int minUser;
     unsigned int col;
     unsigned int row;
@@ -67,33 +68,27 @@ enum {
 };
 
 User *currentUser;
-unsigned int **grid;
+unsigned int gameMode = MSG_BASE;
 char *alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-string promptClient;
+char promptClient[1000];
 Game *game; //shm
 
 bool isClientAdmin() {
+    if (currentUser == NULL) return false;
     return (strcmp(currentUser->name, "Admin") == 0);
 }
 
 void getGrid() {
     strcpy(promptClient, "");
-    if (grid == NULL) {
-        grid = (unsigned int**) calloc(sizeof(unsigned int*), game->session.row);
-        if (grid == NULL) {
-            perror("malloc");
-            exit(1);
-        }
-        for (int i = 0; i < game->session.col; i++)
-        {
-            grid[i] = (unsigned int*) calloc(sizeof(unsigned int), game->session.col);
-        }
-    }
     for (int i = 0; i <= game->session.col; i++)
     {
         sprintf(promptClient, "%s%d ", promptClient, i);
     }
     strcat(promptClient, "\n");
+
+    if (game->session.grid == NULL) {
+        puts("grid is null");
+    }
 
     for (int i = 0; i < game->session.row; i++)
     {
@@ -101,12 +96,12 @@ void getGrid() {
         for (int j = 0; j < game->session.col; j++)
         {
             char c = ' ';
-            switch (grid[j][i])
+            switch (game->session.grid[j][i])
             {
                 case GRID_BOAT:
-                    if (isClientAdmin()) {
+                    // if (isClientAdmin()) {
                         c = 'B';
-                    }
+                    // }
                     break;
                 case GRID_HIT:
                     c = 'T';
@@ -119,19 +114,42 @@ void getGrid() {
         }
         strcat(promptClient, "\n");
     }
-
-    sprintf(promptClient, "%s\nChoisir une position (ex B1)", promptClient);
-    if (isClientAdmin()) {
-        strcat(promptClient, " (OK pour terminer)");
+    sprintf(promptClient, "%s\nChoisir une position (ex B1) (Entrée pour rafraichir la grille)", promptClient);
+    if (gameMode == MSG_PLAY) {
+        sprintf(promptClient, "%s Your turn = %d, Turn of %u", promptClient, currentUser->playerId, game->session.turn);
     }
 }
 
-void sendPromptToClient(int clientSocket, string message) {
+void sendPromptToClient(int clientSocket, char *message) {
     uint32_t dataLen = strlen(message);
     uint32_t hostToNetInt = htonl(dataLen);
     send(clientSocket, &hostToNetInt, sizeof(hostToNetInt), 0);
     send(clientSocket, message, dataLen, 0);
 }
+
+void getWinner(int clientSocket) {
+    puts("get winner deb");
+    User *user = NULL;
+    unsigned int points = 0;
+    unsigned int points2 = 0;
+    for (int i = 0; i < game->session.users.nbUsers; i++)
+    {
+        points2 = game->session.users.users[i].points;
+        if (points < points2) {
+            points = points2;
+            user = &game->session.users.users[i];
+            break;
+        }
+    }
+
+    printf("user = %p", user);
+    //send msg
+    sprintf(promptClient, "Fin du jeu\nLe gagnant est %s avec %u points", user->name, user->points);
+    sendPromptToClient(clientSocket, promptClient);
+    game->session.users.nbUsers = 0;
+}
+
+
 
 void handleClient(int clientSocket, int client, unsigned int fd) {
     char data[500] = {0};
@@ -157,7 +175,6 @@ void handleClient(int clientSocket, int client, unsigned int fd) {
     send(clientSocket, helpCommands, dataLen, 0);
     
     char *pos;
-    unsigned int gameMode = MSG_BASE;
     do
     {
         switch (gameMode)
@@ -176,6 +193,9 @@ void handleClient(int clientSocket, int client, unsigned int fd) {
                 break;
             case MSG_PLACE_BOAT:
                 getGrid();
+                if (isClientAdmin()) {
+                    strcat(promptClient, " (OK pour terminer)");
+                }
                 break;
             case MSG_PLAY:
                 getGrid();
@@ -185,7 +205,9 @@ void handleClient(int clientSocket, int client, unsigned int fd) {
                 strcpy(promptClient, "Enter a command:");
                 break;
         }
+        puts("send prompt to client");
         sendPromptToClient(clientSocket, promptClient);
+        puts("send prompt to client OK");
         memset(data, 0, 500);
 
         // puts("Waiting for client...");
@@ -232,12 +254,12 @@ void handleClient(int clientSocket, int client, unsigned int fd) {
                         break;
                     }
 
-                    grid[number - 1][letter - 'A'] = GRID_BOAT;
+                    game->session.grid[number - 1][letter - 'A'] = GRID_BOAT;
                     game->session.boatNb++;
                     puts(data);
                     break;
                 case MSG_PLAY:
-                    if (game->session.turn == currentUser->playerId) {
+                    if (game->session.turn == currentUser->playerId && !isClientAdmin()) {
                         int number = 0;
                         char letter = 0;
                         sscanf(data, "%c%d", &letter, &number);
@@ -245,15 +267,27 @@ void handleClient(int clientSocket, int client, unsigned int fd) {
                             puts("Invalid position");
                             break;
                         }
-                        unsigned int *cell = &grid[number - 1][letter - 'A'];
+                        unsigned int *cell = &game->session.grid[number - 1][letter - 'A'];
 
                         switch (*cell)
                         {
                             case GRID_BOAT:
                                 *cell = GRID_HIT;
+                                puts("Touché");
                                 game->session.boatNb--;
                                 currentUser->points++;
-                                game->session.turn++;
+
+                                for (int i = 0; i < game->session.users.nbUsers; i++)
+                                {
+                                    User *user = &game->session.users.users[i];
+                                    if (currentUser->playerId == user->playerId) {
+                                        user->points++;
+                                    }
+                                }
+                                
+                                break;
+                            case GRID_WATER:
+                                puts("WATER");
                                 break;
                             
                             default:
@@ -261,35 +295,47 @@ void handleClient(int clientSocket, int client, unsigned int fd) {
                         }
 
                         if (game->session.boatNb == 0) {
-                            User *user = NULL;
-                            unsigned int points = 0;
-                            for (int i = 0; i < game->users.nbUsers; i++)
-                            {
-                                User *userTmp = &game->users.users[i];
-                                if (points > userTmp->points) {
-                                    user = userTmp;
-                                    break;
-                                }
-                            }
-                            
-                            //send msg
-                            dataLen = strlen(msg);
-                            hostToNetInt = htonl(dataLen);
-                            send(clientSocket, &hostToNetInt, sizeof(hostToNetInt), 0);
-                            send(clientSocket, msg, dataLen, 0);
+                            getWinner(clientSocket);
+                            gameMode = MSG_BASE;
+                            continue;
                         }
 
-                        if (game->session.users.nbUsers == ++game->session.turn) {
-                            game->session.turn = 0;
-                            break;
+                        bool next = false;
+                        for (int i = 0; i <= game->session.users.nbUsers; i++)
+                        {
+                            printf("check next %d\n", i);
+                            User *user = &game->session.users.users[i];
+                            if (next) {
+                                printf("j'ai un next\n");
+                                printf("i = %d nb = %d\n", i, game->session.users.nbUsers);
+                                if (i == (game->session.users.nbUsers)) {
+                                    printf("turn => playerId du user 0? name = %s\n", game->session.users.users[0].name);
+                                    game->session.turn = game->session.users.users[0].playerId;
+                                } else {
+                                    if (strcmp(user->name, "Admin") != 0) {
+                                        game->session.turn = user->playerId;
+                                    }
+                                }
+                                printf("turn => playerId = %d\n", user->playerId);
+                                break;
+                            }
+                            if (user->playing && (user->playerId == game->session.turn)) {
+                                next = true;
+                            }
                         }
-                        // if (game->session.turn)
+                        printf("valeur de next = %d\n", next);
+                        if (!next) {
+                            printf("turn => playerId du user 0\n");
+                            game->session.turn = game->session.users.users[0].playerId;
+                        }
                     } else {
+                        if (game->session.boatNb == 0) {
+                            getWinner(clientSocket);
+                            gameMode = MSG_BASE;
+                            continue;
+                        }
                         char *msg = "It's not your turn\n";
-                        dataLen = strlen(msg);
-                        hostToNetInt = htonl(dataLen);
-                        send(clientSocket, &hostToNetInt, sizeof(hostToNetInt), 0);
-                        send(clientSocket, msg, dataLen, 0);
+                        sendPromptToClient(clientSocket, msg);
                         continue;
                     }
                     puts(data);
@@ -336,74 +382,76 @@ void handleClient(int clientSocket, int client, unsigned int fd) {
                 User *user2 = &game->users.users[i];
                 puts(user2->name);
                 if ((strcmp(user2->name, user.name) == 0) && (strcmp(user2->password, user.password) == 0)) {
-                    dataLen = strlen(connectionSuccess);
-                    hostToNetInt = htonl(dataLen);
-                    send(clientSocket, &hostToNetInt, sizeof(hostToNetInt), 0);
-                    send(clientSocket, connectionSuccess, dataLen, 0);
+                    sendPromptToClient(clientSocket, connectionSuccess);
                     found = true;
-                    user.playerId = clientSocket;
-                    user.playing = false;
                     currentUser = user2;
+                    currentUser->playerId = clientSocket;
+                    currentUser->playing = false;
                     break;
                 }
             }
             if (!found) {
-                dataLen = strlen(connectionFailed);
-                hostToNetInt = htonl(dataLen);
-                send(clientSocket, &hostToNetInt, sizeof(hostToNetInt), 0);
-                send(clientSocket, connectionFailed, dataLen, 0);
+                sendPromptToClient(clientSocket, connectionFailed);
             }
             continue;
         } else if (strcmp(data, "startgame") == 0) {
             if (currentUser == NULL) {
                 char *msg = "You must be logged in to start a game\n";
-                dataLen = strlen(msg);
-                hostToNetInt = htonl(dataLen);
-                send(clientSocket, &hostToNetInt, sizeof(hostToNetInt), 0);
-                send(clientSocket, msg, dataLen, 0);
+                sendPromptToClient(clientSocket, msg);
                 continue;
             }
             if (!isClientAdmin()) {
                 char *msg = "You must be an admin to start a game\n";
-                dataLen = strlen(msg);
-                hostToNetInt = htonl(dataLen);
-                send(clientSocket, &hostToNetInt, sizeof(hostToNetInt), 0);
-                send(clientSocket, msg, dataLen, 0);
+                sendPromptToClient(clientSocket, msg);
                 continue;
             }
             gameMode = MSG_NAME;
         } else if (strcmp(data, "check") == 0) {
-            if (game->session.users.nbUsers < game->session.minUser) {
-                char *msg = "Game is not full\n";
-                dataLen = strlen(msg);
-                hostToNetInt = htonl(dataLen);
-                send(clientSocket, &hostToNetInt, sizeof(hostToNetInt), 0);
-                send(clientSocket, msg, dataLen, 0);
+            int nb = 0;
+            for (int i = 0; i < game->session.users.nbUsers; i++)
+            {
+                User *user = &game->session.users.users[i];
+                if (user->playing) {
+                    nb++;
+                }
+            }
+            
+            if (nb < game->session.minUser) {
+                char *msg = "Not enough player to start\n";
+                sendPromptToClient(clientSocket, msg);
                 continue;
             }
+
+            if (isClientAdmin()) {
+                gameMode = MSG_PLAY;
+                break;
+            }
+
+            bool ok = false;
             for (int i = 0; i < game->session.users.nbUsers; i++)
             {
                 User *user = &game->session.users.users[i];
                 if (strcmp(user->name, currentUser->name) == 0) {
+                    if (game->session.turn == 0) {
+                        game->session.turn = currentUser->playerId;
+                    }
+                    ok = true;
                     gameMode = MSG_PLAY;
                     break;
                 }
             }
-            char *msg = "The admin didn't accepted you yet\n";
-            dataLen = strlen(msg);
-            hostToNetInt = htonl(dataLen);
-            send(clientSocket, &hostToNetInt, sizeof(hostToNetInt), 0);
-            send(clientSocket, msg, dataLen, 0);
-            continue;
+            if (!ok) {
+                char *msg = "The admin didn't accepted you yet\n";
+                sendPromptToClient(clientSocket, msg);
+                continue;
+            }
+            puts("fin check");
         } else if (strcmp(data, "userswaiting") == 0) {
             User *user;
             unsigned int nb = game->session.users.nbUsers;
             if (nb == 0) {
                 char *msg = "No users waiting\n";
-                dataLen = strlen(msg);
-                hostToNetInt = htonl(dataLen);
-                send(clientSocket, &hostToNetInt, sizeof(hostToNetInt), 0);
-                send(clientSocket, msg, dataLen, 0);
+                sendPromptToClient(clientSocket, msg);
                 continue;
             }
             size_t playerListSize = nb * 255;
@@ -416,45 +464,37 @@ void handleClient(int clientSocket, int client, unsigned int fd) {
                 strcat(playerList, user->playing ? " (accepted)" : " (not accepted)");
                 strcat(playerList, "\n");
             }
-            dataLen = strlen(playerList);
-            hostToNetInt = htonl(dataLen);
-            send(clientSocket, &hostToNetInt, sizeof(hostToNetInt), 0);
-            send(clientSocket, playerList, dataLen, 0);
+            sendPromptToClient(clientSocket, playerList);
             // write(fd, playerList, strlen(playerList));
             
             continue;
         } else if (strcmp(data, "joingame") == 0) {
             if (currentUser == NULL) {
-                dataLen = strlen("Not logged\n");
-                hostToNetInt = htonl(dataLen);
-                send(clientSocket, &hostToNetInt, sizeof(hostToNetInt), 0);
-                send(clientSocket, "Not logged\n", dataLen, 0);
+                char *msg = "Not logged";
+                sendPromptToClient(clientSocket, msg);
                 game->session.users.nbUsers++;
                 continue;
             }
 
-            if (strcmp(currentUser->name, "admin") == 0) {
-                dataLen = strlen("You are admin\n");
-                hostToNetInt = htonl(dataLen);
-                send(clientSocket, &hostToNetInt, sizeof(hostToNetInt), 0);
-                send(clientSocket, "You are admin\n", dataLen, 0);
+            if (strcmp(currentUser->name, "Admin") == 0) {
+                char *msg = "You are admin\n";
+                sendPromptToClient(clientSocket, msg);
                 game->session.users.nbUsers++;
                 continue;
             }
 
             if (strlen(game->session.name) == 0) {
-                dataLen = strlen("No session available\n");
-                hostToNetInt = htonl(dataLen);
-                send(clientSocket, &hostToNetInt, sizeof(hostToNetInt), 0);
-                send(clientSocket, "No session available\n", dataLen, 0);
+                char *msg = "No session available\n";
+                sendPromptToClient(clientSocket, msg);
                 continue;
             }
             //check session
             unsigned int nb = game->session.users.nbUsers;
-            strcpy(game->session.users.users[nb].name, currentUser->name);
-            game->session.users.users[nb].playing = false;
-            game->session.users.users[nb].points = 0;
-            game->session.users.nbUsers = nb + 1;
+            currentUser->playing = false;
+            game->session.users.users[nb] = *currentUser;
+            printf("Session user named %s with ID %d, nb = %u", currentUser->name, clientSocket, nb);
+            game->session.users.users[nb].playerId = clientSocket;
+            game->session.users.nbUsers++;
         } else if ((pos = strstr(data, "remove")), pos != NULL) {
             // check if user is admin with id using Shared Memory
             pos = strchr(pos, ' ');
@@ -475,6 +515,11 @@ void handleClient(int clientSocket, int client, unsigned int fd) {
                 }
             }
         } else if ((pos = strstr(data, "acceptuser")), pos != NULL) {
+            if (!isClientAdmin()) {
+                char *msg = "You must be an admin to accept a user\n";
+                sendPromptToClient(clientSocket, msg);
+                continue;
+            }
             // check if user is admin with id using Shared Memory
             pos = strchr(pos, ' ');
             if (pos == NULL) {
@@ -494,6 +539,15 @@ void handleClient(int clientSocket, int client, unsigned int fd) {
             }
             // checkgame
         } else if ((pos = strstr(data, "addUser")), pos != NULL) {
+            puts("add 1");
+            if (!isClientAdmin()) {
+                puts("not an admin");
+                char *msg = "You must be an admin to start a game\n";
+                sendPromptToClient(clientSocket, msg);
+                continue;
+            }
+            puts("add 2");
+
             User user;
             unsigned int n = 0;
             const char *separators = " ";
@@ -511,6 +565,7 @@ void handleClient(int clientSocket, int client, unsigned int fd) {
                 n++;
                 elem = strtok(NULL, separators);
             }
+            puts("add 3");
             printf("name = %s password = %s n = %d", user.name, user.password, n);
             strcpy(game->users.users[game->users.nbUsers].name, user.name);
             strcpy(game->users.users[game->users.nbUsers].password, user.password);
@@ -527,23 +582,19 @@ void handleClient(int clientSocket, int client, unsigned int fd) {
                 strcat(playerList, user->name);
                 strcat(playerList, "\n");
             }
-            dataLen = strlen(playerList);
-            hostToNetInt = htonl(dataLen);
-            send(clientSocket, &hostToNetInt, sizeof(hostToNetInt), 0);
-            send(clientSocket, playerList, dataLen, 0);
+            sendPromptToClient(clientSocket, playerList);
             // write(fd, playerList, strlen(playerList));
 
             continue;
         } else if (strcmp(data, "help") == 0) {
-            dataLen = strlen(helpCommands);
-            hostToNetInt = htonl(dataLen);
-            send(clientSocket, &hostToNetInt, sizeof(hostToNetInt), 0);
-            send(clientSocket, helpCommands, dataLen, 0);
+            sendPromptToClient(clientSocket, helpCommands);
             continue;
         }
 
+        puts("send msg");
         hostToNetInt = htonl(0);
         send(clientSocket, &hostToNetInt, sizeof(hostToNetInt), 0);
+        puts("msg sended");
 
         // write(fd, data, strlen(data));
     } while (1);
@@ -578,10 +629,23 @@ int main(int argc, int *argv[]) {
         .playing = false,
     };
 
+
     game = (Game*)shm;
     game->users.users[0] = adminUser;
     game->users.nbUsers = 1;
     strcpy(game->session.name, "");
+
+    // unsigned int osef = enbas[50][50] = {0};
+
+    // game->session.grid = (unsigned[] int**) calloc(sizeof(unsigned int*),50);
+    // if (game->session.grid == NULL) {
+    //     perror("malloc");
+    //     exit(1);
+    // }
+    // for (int i = 0; i < 50; i++)
+    // {
+    //     game->session.grid[i] = (unsigned int*) calloc(sizeof(unsigned int), 50);
+    // }
 
     struct sockaddr_in srv, client;
     // AF_INET => ipv4
@@ -606,8 +670,8 @@ int main(int argc, int *argv[]) {
     write(fd, serverStartedMsg, strlen(serverStartedMsg));
     
     int clientId = 0;
-    // do
-    // {
+    do
+    {
         int sz = sizeof(struct sockaddr_in);
         int clientSocket = accept(sd, (struct sockaddr *) &client, (socklen_t*) &sz);
         if (clientSocket == -1) {
@@ -616,13 +680,13 @@ int main(int argc, int *argv[]) {
         }
         clientId++;
     
-        // int forked = fork();
-        // if (forked == 0) { //handle single client
-            // printf("[Child] New client with id %d\n", clientId);
+        int forked = fork();
+        if (forked == 0) { //handle single client
+            printf("[Child] New client with id %d\n", clientId);
             handleClient(clientSocket, clientId, fd);
-            // return EXIT_SUCCESS;
-        // }
-        // printf("[Main] New client with id %d\n", clientId);
-    // } while (1);
+            return EXIT_SUCCESS;
+        }
+        printf("[Main] New client with id %d\n", clientId);
+    } while (1);
     
 }
