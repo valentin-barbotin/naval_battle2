@@ -58,17 +58,16 @@ int main(int argc, int *argv[]) {
     string msg = "";
     do
     {
-        // puts("Wait server response..");
+        puts("Wait server response..");
         if (resSize = recv(sd, &sizeToReceive, sizeof(uint32_t), 0), resSize == -1) {
             perror("bye");
             exit(1);
         };
         // printf("resSize: %d\n", resSize);
         sizeToReceive = ntohl(sizeToReceive);
-        // printf("sizeToReceive: %u\n", sizeToReceive);
-        // 
+        printf("sizeToReceive: %u\n", sizeToReceive);
         if (sizeToReceive > 0) {
-            // puts("Must receive data, waiting..");
+            puts("Must receive data, waiting..");
             memset(data, 0, 0);
             if (resSize = recv(sd, data, sizeToReceive, 0), resSize == -1) {
                 perror("bye");
@@ -82,6 +81,7 @@ int main(int argc, int *argv[]) {
         receivePrompt(msg, sd);
 
         //check if there something to print
+        puts("go saisi : ");
         fgets(data, 500, stdin);
         data[strcspn(data, "\n")] = 0;
         send(sd, data, 500, 0);
