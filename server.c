@@ -551,7 +551,7 @@ void handleClient(int clientSocket, int client, unsigned int fd) {
         } else if ((pos = strstr(data, "addUser")), pos != NULL) {
             if (!isClientAdmin()) {
                 puts("not an admin");
-                char *msg = "You must be an admin to start a game\n";
+                char *msg = "You are not an admin\n";
                 sendPromptToClient(clientSocket, msg);
                 continue;
             }
