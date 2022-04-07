@@ -180,6 +180,7 @@ void getWinner(int clientSocket) {
     sprintf(promptClient, "Fin du jeu\nLe gagnant est %s avec %u points", user->name, user->points);
     sendPromptToClient(clientSocket, promptClient);
     // game->session.users.nbUsers = 0;
+    memset(game->session.grid, 0, sizeof(game->session.grid));
 }
 
 
