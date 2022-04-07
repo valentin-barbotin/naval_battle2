@@ -86,7 +86,7 @@ bool turnForTheNextPlayer() {
         User *user = &game->session.users.users[i];
         if (next) {
             printf("j'ai un next\n");
-            printf("i = %d nb = %d\n", i, game->session.users.nbUsers);
+            // printf("i = %d nb = %d\n", i, game->session.users.nbUsers);
             if (i == (game->session.users.nbUsers)) {
                 printf("turn => playerId du user 0? name = %s\n", game->session.users.users[0].name);
                 game->session.turn = game->session.users.users[0].playerId;
@@ -122,7 +122,7 @@ void getGrid() {
         sprintf(promptClient, "%s%c ", promptClient, alphabet[i]);
         for (int j = 0; j < game->session.col; j++)
         {
-            char c = ' ';
+            char c = '.';
             switch (game->session.grid[j][i])
             {
                 case GRID_BOAT:
@@ -151,7 +151,9 @@ void sendPromptToClient(int clientSocket, char *message) {
     uint32_t dataLen = strlen(message);
     uint32_t hostToNetInt = htonl(dataLen);
     send(clientSocket, &hostToNetInt, sizeof(hostToNetInt), 0);
-    send(clientSocket, message, dataLen, 0);
+    if (dataLen > 0) {
+        send(clientSocket, message, dataLen, 0);
+    }
 }
 
 void getWinner(int clientSocket) {
@@ -159,21 +161,25 @@ void getWinner(int clientSocket) {
     User *user = NULL;
     unsigned int points = 0;
     unsigned int points2 = 0;
+    printf("nbUsers = %d\n", game->session.users.nbUsers);
     for (int i = 0; i < game->session.users.nbUsers; i++)
     {
+        printf("loop %d\n", i);
         points2 = game->session.users.users[i].points;
+        printf("points = %d\n", points);
+        printf("points2 = %d\n", points2);
         if (points < points2) {
             points = points2;
             user = &game->session.users.users[i];
             break;
         }
     }
-
+    puts("get winner mid");
     printf("user = %p", user);
     //send msg
     sprintf(promptClient, "Fin du jeu\nLe gagnant est %s avec %u points", user->name, user->points);
     sendPromptToClient(clientSocket, promptClient);
-    game->session.users.nbUsers = 0;
+    // game->session.users.nbUsers = 0;
 }
 
 
@@ -288,8 +294,10 @@ void handleClient(int clientSocket, int client, unsigned int fd) {
                     break;
                 case MSG_PLAY:
                     if (game->session.boatNb == 0) {
+                        puts("boat == 0");
                         getWinner(clientSocket);
                         gameMode = MSG_BASE;
+                        continue;
                     }
                     if (game->session.turn == currentUser->playerId && !isClientAdmin()) {
                         int number = 0;
@@ -326,17 +334,17 @@ void handleClient(int clientSocket, int client, unsigned int fd) {
                                 break;
                         }
 
-                        if (game->session.boatNb == 0) {
-                            getWinner(clientSocket);
-                            gameMode = MSG_BASE;
-                            continue;
-                        }
 
                         bool next = turnForTheNextPlayer();
                         printf("valeur de next = %d\n", next);
                         if (!next) {
                             printf("turn => playerId du user 0\n");
                             game->session.turn = game->session.users.users[0].playerId;
+                        }
+                        if (game->session.boatNb == 0) {
+                            getWinner(clientSocket);
+                            gameMode = MSG_BASE;
+                            continue;
                         }
                     } else {
                         if (isClientAdmin()) {
